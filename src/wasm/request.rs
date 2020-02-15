@@ -4,6 +4,12 @@ use std::fmt;
 use http::Method;
 use url::Url;
 
+#[cfg(feature = "json")]
+use serde_json;  
+use serde::Serialize;
+use crate::header::CONTENT_TYPE;
+
+
 use super::{Body, Client, Response};
 use crate::header::{HeaderMap, HeaderName, HeaderValue};
 
@@ -120,6 +126,36 @@ impl RequestBuilder {
         }
         self
     }
+
+    /// Send a JSON body.
+    ///
+    /// # Optional
+    ///
+    /// This requires the optional `json` feature enabled.
+    ///
+    /// # Errors
+    ///
+    /// Serialization can fail if `T`'s implementation of `Serialize` decides to 
+    /// fail, or if `T` contains a map with non-string keys.
+    #[cfg(feature = "json")]
+    pub fn json<T: Serialize + ?Sized>(mut self, json: &T) -> RequestBuilder {
+        let mut error = None;
+        if let Ok(ref mut req) = self.request {
+            match serde_json::to_vec(json) {
+                Ok(body) => {
+                    req.headers_mut()
+                        .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+                    *req.body_mut() = Some(body.into());
+                }
+                Err(err) => error = Some(crate::error::builder(err)),
+            }
+        }
+        if let Some(err) = error {
+            self.request = Err(err);
+        }
+        self
+    }
+
 
     /// Disable CORS on fetching the request.
     ///
